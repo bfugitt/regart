@@ -10,6 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     
+    <!-- GIF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+
     <style>
         /* --- Reggio "Lumi" Theme --- */
         :root {
@@ -104,12 +107,18 @@
             align-items: center;
             gap: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            font-size: 13px;
         }
 
         .btn-text:hover {
             border-color: var(--color-sage);
             color: var(--color-sage);
             transform: translateY(-1px);
+        }
+        
+        .btn-danger:hover {
+            border-color: #D4A373;
+            color: #D4A373;
         }
 
         .btn-primary {
@@ -120,6 +129,12 @@
         .btn-primary:hover {
             background-color: #6A7F70;
             color: white;
+        }
+        
+        .btn-primary:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
 
         /* --- Main Workspace --- */
@@ -209,7 +224,6 @@
             position: relative;
         }
         
-        /* New Layered Wrapper for correct Stacking */
         .canvas-wrapper {
             position: relative;
             background: white;
@@ -245,7 +259,7 @@
             z-index: 1;
             opacity: 0; /* Hidden by default */
             transition: opacity 0.2s;
-            background-size: 100% 100%; /* Critical Fix: Stretch to fill */
+            background-size: 100% 100%;
             background-repeat: no-repeat;
         }
         
@@ -259,7 +273,7 @@
             z-index: 2;
             display: block;
             image-rendering: pixelated;
-            background: transparent; /* Must be transparent to see layers below */
+            background: transparent;
         }
         
         /* Grid Overlay (On Top) */
@@ -288,7 +302,7 @@
             background: var(--glass-white);
             border-radius: var(--radius-md);
             box-shadow: var(--shadow-soft);
-            padding: 15px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -301,28 +315,33 @@
             color: var(--color-pebble);
             margin-bottom: 10px;
             font-weight: 700;
+            width: 100%;
+            text-align: center;
         }
 
         .preview-box {
-            width: 150px;
-            height: 150px;
+            width: 100%;
+            aspect-ratio: 1/1;
             background: white;
             border: 1px solid var(--border-light);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             background-image: 
                 linear-gradient(45deg, #eee 25%, transparent 25%), 
                 linear-gradient(-45deg, #eee 25%, transparent 25%), 
                 linear-gradient(45deg, transparent 75%, #eee 75%), 
                 linear-gradient(-45deg, transparent 75%, #eee 75%);
             background-size: 10px 10px;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
         }
         
         .preview-box canvas {
-            max-width: 100%;
-            max-height: 100%;
+            width: 100%;
+            height: 100%;
             image-rendering: pixelated;
             background: none;
         }
@@ -331,6 +350,8 @@
             display: flex;
             gap: 10px;
             align-items: center;
+            width: 100%;
+            justify-content: center;
         }
 
         /* --- Timeline (Bottom) --- */
@@ -439,9 +460,13 @@
             Motion Study
         </h1>
         <div class="header-controls">
-            <button class="btn-text" id="clearBtn">
+            <button class="btn-text" id="resetBtn" title="Erase everything and start over">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                New Inquiry
+            </button>
+            <button class="btn-text btn-danger" id="clearBtn" title="Clear current moment">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Clear
+                Clear Moment
             </button>
             <button class="btn-text btn-primary" id="downloadBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -477,7 +502,6 @@
         <!-- CANVAS AREA -->
         <div class="canvas-area">
             <div class="canvas-wrapper">
-                <!-- Layers stack order: 0.BG, 1.Ghost, 2.Active -->
                 <div class="layer" id="checkerboard-bg"></div>
                 <div class="layer" id="onion-skin-layer"></div>
                 <canvas id="mainCanvas" width="32" height="32"></canvas>
@@ -530,16 +554,16 @@
 <script>
     // --- Application State ---
     const CANVAS_SIZE = 32;
-    const SCALE = 16; // Visual scale factor
+    const SCALE = 16; 
+    const EXPORT_SCALE = 10; // Export GIF at 320x320
     
-    let frames = []; // Array of ImageData
+    let frames = []; 
     let currentFrameIndex = 0;
     let isPlaying = false;
     let playInterval = null;
     let onionSkin = false;
     
-    // Tools
-    let currentTool = 'pencil'; // pencil, eraser, bucket
+    let currentTool = 'pencil'; 
     let currentColor = '#4A4A4A';
     let isDrawing = false;
 
@@ -559,7 +583,8 @@
     
     // Initialize
     function init() {
-        // Create first blank frame
+        frames = [];
+        currentFrameIndex = 0;
         addFrame();
         updateUI();
         setupEvents();
@@ -574,7 +599,6 @@
     function addFrame(copyFromIndex = null) {
         let newData;
         if (copyFromIndex !== null && frames[copyFromIndex]) {
-            // Deep copy existing frame data
             newData = new ImageData(
                 new Uint8ClampedArray(frames[copyFromIndex].data),
                 CANVAS_SIZE,
@@ -595,6 +619,9 @@
         ctx.putImageData(frames[index], 0, 0);
         updateOnionSkin();
         updateTimelineUI();
+        // Update preview immediately
+        pCtx.clearRect(0,0,CANVAS_SIZE, CANVAS_SIZE);
+        pCtx.putImageData(frames[index], 0, 0);
     }
 
     function saveCurrentFrame() {
@@ -606,14 +633,12 @@
 
     function updateOnionSkin() {
         if (onionSkin && currentFrameIndex > 0) {
-            // Create a temp canvas to generate a data URL of the previous frame
             const temp = document.createElement('canvas');
             temp.width = CANVAS_SIZE;
             temp.height = CANVAS_SIZE;
             const tCtx = temp.getContext('2d');
             tCtx.putImageData(frames[currentFrameIndex - 1], 0, 0);
             
-            // Set the onion layer background
             const url = temp.toDataURL();
             onionLayer.style.backgroundImage = `url(${url})`;
             onionLayer.classList.add('visible');
@@ -627,7 +652,6 @@
 
     function getPixelCoords(e) {
         const rect = mainCanvas.getBoundingClientRect();
-        // Handle touch or mouse
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         
@@ -647,7 +671,7 @@
         const index = (y * CANVAS_SIZE + x) * 4;
         
         if (currentTool === 'eraser') {
-            imgData.data[index + 3] = 0; // Alpha 0
+            imgData.data[index + 3] = 0; 
         } else {
             imgData.data[index] = r;
             imgData.data[index + 1] = g;
@@ -656,11 +680,10 @@
         }
         
         ctx.putImageData(imgData, 0, 0);
-        saveCurrentFrame(); // Auto-save on draw
+        saveCurrentFrame(); 
     }
 
     function floodFill(startX, startY) {
-        // Simple BFS flood fill
         const imgData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
         const data = imgData.data;
         
@@ -684,12 +707,11 @@
             
             if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) continue;
             
-            // Match color?
             if (data[idx] === startR && data[idx+1] === startG && data[idx+2] === startB && data[idx+3] === startA) {
                 data[idx] = targetR;
                 data[idx+1] = targetG;
                 data[idx+2] = targetB;
-                data[idx+3] = 255; // Set alpha to full
+                data[idx+3] = 255; 
                 
                 queue.push([x+1, y]);
                 queue.push([x-1, y]);
@@ -710,7 +732,6 @@
             el.className = `frame ${index === currentFrameIndex ? 'active' : ''}`;
             el.onclick = () => loadFrame(index);
             
-            // Mini canvas for thumbnail
             const thumb = document.createElement('canvas');
             thumb.width = CANVAS_SIZE;
             thumb.height = CANVAS_SIZE;
@@ -738,7 +759,6 @@
         const canvas = framesContainer.children[index].querySelector('canvas');
         canvas.getContext('2d').putImageData(frames[index], 0, 0);
         
-        // Update preview too if idle
         if(!isPlaying) {
             pCtx.clearRect(0,0,CANVAS_SIZE, CANVAS_SIZE);
             pCtx.drawImage(canvas, 0, 0);
@@ -752,9 +772,9 @@
         const btn = document.getElementById('playBtn');
         
         if (isPlaying) {
-            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`; // Pause icon
+            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
             
-            let frameIdx = 0;
+            let frameIdx = currentFrameIndex;
             const fps = document.getElementById('fpsSlider').value;
             const interval = 1000 / fps;
             
@@ -765,9 +785,8 @@
             }, interval);
             
         } else {
-            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`; // Play icon
+            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`; 
             clearInterval(playInterval);
-            // Show current frame in preview
             pCtx.putImageData(frames[currentFrameIndex], 0, 0);
         }
     }
@@ -775,29 +794,75 @@
     // --- Export Logic ---
 
     function downloadGIF() {
-        alert("GIF Capture Simulated.\n\n(In a full production environment, this would process the " + frames.length + " frames and download a .gif file.)");
+        const btn = document.getElementById('downloadBtn');
+        const origText = btn.innerHTML;
+        btn.innerHTML = 'Processing...';
+        btn.disabled = true;
+
+        // 1. Prepare images (scale up for visibility)
+        const images = frames.map(frameData => {
+            const tCan = document.createElement('canvas');
+            tCan.width = CANVAS_SIZE * EXPORT_SCALE;
+            tCan.height = CANVAS_SIZE * EXPORT_SCALE;
+            const tCtx = tCan.getContext('2d');
+            
+            // Draw small data to temp small canvas first
+            const sCan = document.createElement('canvas');
+            sCan.width = CANVAS_SIZE;
+            sCan.height = CANVAS_SIZE;
+            sCan.getContext('2d').putImageData(frameData, 0, 0);
+
+            // Draw scaled up with nearest neighbor
+            tCtx.imageSmoothingEnabled = false;
+            tCtx.drawImage(sCan, 0, 0, tCan.width, tCan.height);
+            
+            return tCan.toDataURL();
+        });
+
+        const fps = document.getElementById('fpsSlider').value;
+
+        // 2. Generate GIF
+        gifshot.createGIF({
+            images: images,
+            gifWidth: CANVAS_SIZE * EXPORT_SCALE,
+            gifHeight: CANVAS_SIZE * EXPORT_SCALE,
+            interval: 1 / fps,
+            numFrames: images.length,
+            sampleInterval: 10, // Quality trade-off
+        }, function(obj) {
+            if(!obj.error) {
+                const link = document.createElement('a');
+                link.download = 'motion-study.gif';
+                link.href = obj.image;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                alert("Could not generate GIF.");
+            }
+            btn.innerHTML = origText;
+            btn.disabled = false;
+        });
     }
 
     // --- Events Setup ---
 
     function setupEvents() {
-        // Tools
         document.getElementById('tool-pencil').onclick = () => setTool('pencil');
         document.getElementById('tool-eraser').onclick = () => setTool('eraser');
         document.getElementById('tool-bucket').onclick = () => setTool('bucket');
         
         document.getElementById('colorPicker').oninput = (e) => {
             currentColor = e.target.value;
-            setTool('pencil'); // Switch back to pencil on color pick
+            setTool('pencil');
         };
 
-        // Canvas Drawing
         const startDraw = (e) => {
             isDrawing = true;
             const {x, y} = getPixelCoords(e);
             if (currentTool === 'bucket') {
                 floodFill(x, y);
-                isDrawing = false; // Bucket is one-shot
+                isDrawing = false; 
             } else {
                 drawPixel(x, y);
             }
@@ -805,7 +870,6 @@
         
         const moveDraw = (e) => {
             if (!isDrawing) return;
-            // Prevent scrolling on touch
             e.preventDefault(); 
             const {x, y} = getPixelCoords(e);
             drawPixel(x, y);
@@ -821,7 +885,6 @@
         window.addEventListener('touchmove', moveDraw, {passive: false});
         window.addEventListener('touchend', endDraw);
 
-        // UI Controls
         document.getElementById('addFrameBtn').onclick = () => addFrame();
         document.getElementById('copyFrameBtn').onclick = () => addFrame(currentFrameIndex);
         
@@ -829,7 +892,7 @@
         
         document.getElementById('fpsSlider').oninput = (e) => {
             document.getElementById('fpsLabel').innerText = e.target.value + 'fps';
-            if(isPlaying) { togglePlay(); togglePlay(); } // Restart
+            if(isPlaying) { togglePlay(); togglePlay(); } 
         };
         
         document.getElementById('onion-skin-toggle').onclick = (e) => {
@@ -842,6 +905,16 @@
             if(confirm("Clear this moment?")) {
                 ctx.clearRect(0,0,CANVAS_SIZE, CANVAS_SIZE);
                 saveCurrentFrame();
+            }
+        };
+
+        // NEW: Reset All
+        document.getElementById('resetBtn').onclick = () => {
+            if(confirm("Start a new inquiry? This will erase all moments.")) {
+                if(isPlaying) togglePlay();
+                init(); // Re-runs init, clearing frames array
+                renderTimeline();
+                loadFrame(0);
             }
         };
 
