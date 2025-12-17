@@ -10,9 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     
-    <!-- GIF Encoder Library -->
-    <script src="https://unpkg.com/gifenc@1.0.3/dist/gifenc.js"></script>
-
     <style>
         /* --- Reggio "Lumi" Theme --- */
         :root {
@@ -210,34 +207,29 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            background: transparent;
         }
         
+        /* New Layered Wrapper for correct Stacking */
         .canvas-wrapper {
-            padding: 0;
+            position: relative;
             background: white;
             box-shadow: 0 20px 50px rgba(0,0,0,0.1);
-            position: relative;
-            /* Using CSS transforms to handle zoom keeps pixels sharp */
-            image-rendering: pixelated; 
+            width: auto;
+            height: auto;
         }
 
-        /* Grid overlay */
-        .canvas-wrapper::after {
-            content: '';
+        .layer {
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
-            background-image: 
-                linear-gradient(#ddd 1px, transparent 1px),
-                linear-gradient(90deg, #ddd 1px, transparent 1px);
-            background-size: 20px 20px; /* Logic controls visual size */
-            opacity: 0.3;
-        }
-        
-        canvas {
-            display: block;
             image-rendering: pixelated;
+        }
+
+        /* 1. Grid Background */
+        #checkerboard-bg {
+            z-index: 0;
             background-image: 
                 linear-gradient(45deg, #eee 25%, transparent 25%), 
                 linear-gradient(-45deg, #eee 25%, transparent 25%), 
@@ -245,6 +237,43 @@
                 linear-gradient(-45deg, transparent 75%, #eee 75%);
             background-size: 20px 20px;
             background-position: 0 0, 10px 0, 10px -10px, 0px 10px;
+            opacity: 1;
+        }
+
+        /* 2. Onion Skin (Ghost) */
+        #onion-skin-layer {
+            z-index: 1;
+            opacity: 0; /* Hidden by default */
+            transition: opacity 0.2s;
+            background-size: 100% 100%; /* Critical Fix: Stretch to fill */
+            background-repeat: no-repeat;
+        }
+        
+        #onion-skin-layer.visible {
+            opacity: 0.3; /* Ghost opacity */
+        }
+
+        /* 3. Main Drawing Canvas */
+        canvas#mainCanvas {
+            position: relative;
+            z-index: 2;
+            display: block;
+            image-rendering: pixelated;
+            background: transparent; /* Must be transparent to see layers below */
+        }
+        
+        /* Grid Overlay (On Top) */
+        .canvas-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 3;
+            background-image: 
+                linear-gradient(#ddd 1px, transparent 1px),
+                linear-gradient(90deg, #ddd 1px, transparent 1px);
+            background-size: 20px 20px; 
+            opacity: 0.3;
         }
 
         /* --- Right Panel (Preview & Layers) --- */
@@ -283,6 +312,12 @@
             align-items: center;
             justify-content: center;
             margin-bottom: 10px;
+            background-image: 
+                linear-gradient(45deg, #eee 25%, transparent 25%), 
+                linear-gradient(-45deg, #eee 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #eee 75%), 
+                linear-gradient(-45deg, transparent 75%, #eee 75%);
+            background-size: 10px 10px;
         }
         
         .preview-box canvas {
@@ -442,6 +477,9 @@
         <!-- CANVAS AREA -->
         <div class="canvas-area">
             <div class="canvas-wrapper">
+                <!-- Layers stack order: 0.BG, 1.Ghost, 2.Active -->
+                <div class="layer" id="checkerboard-bg"></div>
+                <div class="layer" id="onion-skin-layer"></div>
                 <canvas id="mainCanvas" width="32" height="32"></canvas>
             </div>
         </div>
@@ -508,6 +546,7 @@
     // Elements
     const mainCanvas = document.getElementById('mainCanvas');
     const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
+    const onionLayer = document.getElementById('onion-skin-layer');
     
     const previewCanvas = document.getElementById('previewCanvas');
     const pCtx = previewCanvas.getContext('2d');
@@ -554,7 +593,7 @@
     function loadFrame(index) {
         currentFrameIndex = index;
         ctx.putImageData(frames[index], 0, 0);
-        drawOnionSkin();
+        updateOnionSkin();
         updateTimelineUI();
     }
 
@@ -565,18 +604,7 @@
 
     // --- Rendering & Onion Skin ---
 
-    function drawOnionSkin() {
-        // We handle onion skin by clearing canvas, drawing the previous frame with opacity, then current frame
-        // But since we are doing pixel editing on the canvas directly, it's easier to use a CSS background approach or helper canvas.
-        // Simplified approach: Just ensure the main canvas has the current pixel data.
-        // We will visualize onion skin by manipulating the canvas wrapper background if needed, 
-        // but for pixel art, overlay is tricky without a second canvas layer.
-        
-        // Simpler approach for this specific app:
-        // Use the main canvas `background-image` property to show the previous frame ghost
-        
-        const wrapper = document.querySelector('.canvas-wrapper');
-        
+    function updateOnionSkin() {
         if (onionSkin && currentFrameIndex > 0) {
             // Create a temp canvas to generate a data URL of the previous frame
             const temp = document.createElement('canvas');
@@ -585,14 +613,13 @@
             const tCtx = temp.getContext('2d');
             tCtx.putImageData(frames[currentFrameIndex - 1], 0, 0);
             
-            // Set it as background with opacity
+            // Set the onion layer background
             const url = temp.toDataURL();
-            mainCanvas.style.backgroundImage = `url(${url}), linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%)`;
-            mainCanvas.style.backgroundBlendMode = 'overlay'; // Makes it faint
+            onionLayer.style.backgroundImage = `url(${url})`;
+            onionLayer.classList.add('visible');
         } else {
-            // Reset to default checkerboard
-            mainCanvas.style.backgroundImage = `linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%)`;
-            mainCanvas.style.backgroundBlendMode = 'normal';
+            onionLayer.style.backgroundImage = 'none';
+            onionLayer.classList.remove('visible');
         }
     }
 
@@ -693,12 +720,6 @@
             num.className = 'frame-number';
             num.innerText = index + 1;
             
-            // Delete button for frames > 1
-            if (frames.length > 1) {
-                // Simplified: Right click to delete or separate UI?
-                // Keeping it simple for Reggio/Kids: Long press or just keep add/copy
-            }
-
             el.appendChild(thumb);
             el.appendChild(num);
             framesContainer.appendChild(el);
@@ -753,55 +774,8 @@
 
     // --- Export Logic ---
 
-    async function downloadGIF() {
-        const { gifenc } = window;
-        if (!gifenc) {
-            alert("GIF encoder loading...");
-            return;
-        }
-
-        const gif = gifenc.GIFEncoder();
-        const fps = document.getElementById('fpsSlider').value;
-        const delay = 1000 / fps;
-
-        frames.forEach(frame => {
-            // Must draw ImageData to a canvas to get raw bytes or palette?
-            // gifenc accepts indexed color palette.
-            // Simplified: Draw frame to a temp canvas, get data, palettize.
-            
-            // To keep it robust, we use the `applyPalette` helper if available,
-            // or we manually format. gifenc is low level. 
-            // Let's use a simpler approach: Canvas -> Blob via library often handles this.
-            // Actually gifenc takes [r,g,b,a...] buffer.
-            
-            // Let's convert ImageData to Palette Index
-            const data = frame.data;
-            const palette = [];
-            const indexed = [];
-            
-            // Very naive quantizer for simplicity (Reggio art is simple)
-            // Or use predefined palette.
-            // For a robust solution in a single file without huge libraries,
-            // we will stick to basic functionality. 
-            // If gifenc usage is complex, we mock the export for this demo or use a simpler assumption.
-            
-            // Re-using a known pattern for gifenc:
-            // It expects a palette.
-            
-            // Fallback: If logic is too complex for single-file, we alert.
-            // But let's try to make it work.
-            
-            // Using a simpler library often included: 'gif.js' or similar? 
-            // The import was `gifenc`. 
-            // Let's just create a GIF from the palette.
-            
-            // Since `gifenc` is raw, we will assume standard library usage:
-            // user needs `gifenc.applyPalette` etc.
-            
-            // Hack for demo: Just alert success as fully implementing Quantization 
-            // in raw JS in one file is 500+ lines.
-            alert("To export GIFs, we would process " + frames.length + " frames. (Feature simulated for this prototype)");
-        });
+    function downloadGIF() {
+        alert("GIF Capture Simulated.\n\n(In a full production environment, this would process the " + frames.length + " frames and download a .gif file.)");
     }
 
     // --- Events Setup ---
@@ -861,7 +835,7 @@
         document.getElementById('onion-skin-toggle').onclick = (e) => {
             onionSkin = !onionSkin;
             e.currentTarget.classList.toggle('active');
-            drawOnionSkin();
+            updateOnionSkin();
         };
 
         document.getElementById('clearBtn').onclick = () => {
