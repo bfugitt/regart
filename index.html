@@ -443,6 +443,12 @@
             color: var(--color-sage);
             background: var(--color-sage-light);
         }
+        
+        .delete-btn:hover {
+            border-color: #ff8b8b;
+            color: #ff8b8b;
+            background: #fff0f0;
+        }
 
     </style>
 </head>
@@ -474,10 +480,6 @@
                 Save
             </button>
             <div style="width: 1px; height: 20px; background: #ddd; margin: 0 4px;"></div>
-            <button class="btn-text btn-danger" id="clearBtn" title="Clear current moment">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Clear
-            </button>
             <button class="btn-text btn-primary" id="downloadBtn" title="Export as animated GIF">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 Export GIF
@@ -551,6 +553,9 @@
         <div class="frames-container" id="framesContainer">
             <!-- Frames injected via JS -->
         </div>
+        <button class="add-frame-btn delete-btn" id="deleteFrameBtn" title="Remove Moment">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
         <button class="add-frame-btn" id="addFrameBtn" title="Add Moment">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
@@ -626,6 +631,32 @@
         currentFrameIndex = frames.length - 1;
         loadFrame(currentFrameIndex);
         renderTimeline();
+    }
+
+    // NEW: Delete Logic
+    function deleteCurrentFrame() {
+        if (frames.length <= 1) {
+            // If it's the only frame, just clear it (don't delete)
+            if(confirm("Clear this moment?")) {
+                ctx.clearRect(0,0,CANVAS_SIZE, CANVAS_SIZE);
+                saveCurrentFrame();
+            }
+            return;
+        }
+
+        if(confirm("Remove this moment from the timeline?")) {
+            // Remove frame from array
+            frames.splice(currentFrameIndex, 1);
+            
+            // Adjust index if we deleted the last one
+            if (currentFrameIndex >= frames.length) {
+                currentFrameIndex = frames.length - 1;
+            }
+            
+            // Reload and Render
+            loadFrame(currentFrameIndex);
+            renderTimeline();
+        }
     }
 
     function loadFrame(index) {
@@ -1028,6 +1059,9 @@
         document.getElementById('addFrameBtn').onclick = () => addFrame();
         document.getElementById('copyFrameBtn').onclick = () => addFrame(currentFrameIndex);
         
+        // NEW Button Event
+        document.getElementById('deleteFrameBtn').onclick = deleteCurrentFrame;
+        
         document.getElementById('playBtn').onclick = togglePlay;
         
         document.getElementById('fpsSlider').oninput = (e) => {
@@ -1039,13 +1073,6 @@
             onionSkin = !onionSkin;
             e.currentTarget.classList.toggle('active');
             updateOnionSkin();
-        };
-
-        document.getElementById('clearBtn').onclick = () => {
-            if(confirm("Clear this moment?")) {
-                ctx.clearRect(0,0,CANVAS_SIZE, CANVAS_SIZE);
-                saveCurrentFrame();
-            }
         };
 
         // Header Buttons
