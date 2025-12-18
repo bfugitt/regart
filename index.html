@@ -791,7 +791,7 @@
         }
     }
 
-    // --- Export Logic ---
+    // --- Export Logic (UPDATED: "Save As" / Show Picker) ---
 
     function downloadGIF() {
         const btn = document.getElementById('downloadBtn');
@@ -829,20 +829,49 @@
             interval: 1 / fps,
             numFrames: images.length,
             sampleInterval: 10, // Quality trade-off
-        }, function(obj) {
+        }, async function(obj) {
             if(!obj.error) {
-                const link = document.createElement('a');
-                link.download = 'motion-study.gif';
-                link.href = obj.image;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                // --- NEW SAVING LOGIC ---
+                // Try modern "Save As" picker first (Works great on Chromebooks)
+                if (window.showSaveFilePicker) {
+                    try {
+                        // Convert base64 to Blob
+                        const blob = await (await fetch(obj.image)).blob();
+                        
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: 'motion-study.gif',
+                            types: [{
+                                description: 'GIF File',
+                                accept: {'image/gif': ['.gif']},
+                            }],
+                        });
+                        const writable = await handle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                    } catch (err) {
+                        // User cancelled or error, fallback to download
+                        console.log("Save Picker cancelled or failed, falling back.");
+                        fallbackDownload(obj.image);
+                    }
+                } else {
+                    // Fallback for older browsers
+                    fallbackDownload(obj.image);
+                }
             } else {
                 alert("Could not generate GIF.");
             }
             btn.innerHTML = origText;
             btn.disabled = false;
         });
+    }
+
+    function fallbackDownload(dataUrl) {
+        const link = document.createElement('a');
+        link.download = 'motion-study.gif';
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     // --- Events Setup ---
