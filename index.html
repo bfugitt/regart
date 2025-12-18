@@ -90,13 +90,13 @@
         
         .header-controls {
             display: flex;
-            gap: 12px;
+            gap: 8px;
         }
 
         .btn-text {
             background: white;
             border: 1px solid var(--border-light);
-            padding: 8px 16px;
+            padding: 8px 14px;
             border-radius: 20px;
             font-family: 'Lato', sans-serif;
             font-weight: 600;
@@ -105,9 +105,10 @@
             transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             font-size: 13px;
+            white-space: nowrap;
         }
 
         .btn-text:hover {
@@ -462,15 +463,24 @@
         <div class="header-controls">
             <button class="btn-text" id="resetBtn" title="Erase everything and start over">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                New Inquiry
+                New
             </button>
+            <button class="btn-text" id="loadBtn" title="Open saved work">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Open
+            </button>
+            <button class="btn-text" id="saveBtn" title="Save work to edit later">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save
+            </button>
+            <div style="width: 1px; height: 20px; background: #ddd; margin: 0 4px;"></div>
             <button class="btn-text btn-danger" id="clearBtn" title="Clear current moment">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Clear Moment
+                Clear
             </button>
-            <button class="btn-text btn-primary" id="downloadBtn">
+            <button class="btn-text btn-primary" id="downloadBtn" title="Export as animated GIF">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                Capture GIF
+                Export GIF
             </button>
         </div>
     </header>
@@ -551,6 +561,9 @@
 
 </div>
 
+<!-- Hidden File Input for Loading -->
+<input type="file" id="fileInput" style="display:none" accept=".json,.pixart">
+
 <script>
     // --- Application State ---
     const CANVAS_SIZE = 32;
@@ -576,6 +589,7 @@
     const pCtx = previewCanvas.getContext('2d');
     
     const framesContainer = document.getElementById('framesContainer');
+    const fileInput = document.getElementById('fileInput');
     
     // CSS Scale Setup
     mainCanvas.style.width = (CANVAS_SIZE * SCALE) + 'px';
@@ -791,7 +805,118 @@
         }
     }
 
-    // --- Export Logic (UPDATED: "Save As" / Show Picker) ---
+    // --- Save/Load Project Logic ---
+
+    async function saveProject() {
+        // Collect frames as data URLs (to make JSON stringifyable)
+        const frameDataUrls = frames.map(f => {
+            const tCan = document.createElement('canvas');
+            tCan.width = CANVAS_SIZE;
+            tCan.height = CANVAS_SIZE;
+            tCan.getContext('2d').putImageData(f, 0, 0);
+            return tCan.toDataURL('image/png');
+        });
+
+        const projectData = {
+            version: '1.0',
+            fps: document.getElementById('fpsSlider').value,
+            frames: frameDataUrls
+        };
+
+        const blob = new Blob([JSON.stringify(projectData)], {type: 'application/json'});
+
+        // Try modern File System Access API
+        if (window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'motion-study.json',
+                    types: [{
+                        description: 'Motion Study Project',
+                        accept: {'application/json': ['.json', '.pixart']},
+                    }],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } catch (err) {
+                // Cancelled
+            }
+        } else {
+            // Fallback
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'motion-study.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    function triggerLoad() {
+        if (window.showOpenFilePicker) {
+            window.showOpenFilePicker({
+                types: [{
+                    description: 'Motion Study Project',
+                    accept: {'application/json': ['.json', '.pixart']},
+                }],
+                multiple: false
+            }).then(async (handles) => {
+                const file = await handles[0].getFile();
+                const text = await file.text();
+                parseProject(text);
+            }).catch(err => {}); // Cancelled
+        } else {
+            // Fallback for browsers without File System Access API
+            fileInput.click();
+        }
+    }
+
+    async function parseProject(jsonStr) {
+        try {
+            const data = JSON.parse(jsonStr);
+            if (!data.frames || !Array.isArray(data.frames)) throw new Error("Invalid project file");
+
+            // Stop playback
+            if(isPlaying) togglePlay();
+
+            // Reset state
+            frames = [];
+            
+            // Load frames (async loop for image loading)
+            for (const url of data.frames) {
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const tCan = document.createElement('canvas');
+                        tCan.width = CANVAS_SIZE;
+                        tCan.height = CANVAS_SIZE;
+                        tCan.getContext('2d').drawImage(img, 0, 0);
+                        frames.push(tCan.getContext('2d').getImageData(0,0,CANVAS_SIZE,CANVAS_SIZE));
+                        resolve();
+                    };
+                    img.src = url;
+                });
+            }
+
+            // Set FPS
+            if (data.fps) {
+                document.getElementById('fpsSlider').value = data.fps;
+                document.getElementById('fpsLabel').innerText = data.fps + 'fps';
+            }
+
+            currentFrameIndex = 0;
+            loadFrame(0);
+            renderTimeline();
+
+        } catch (e) {
+            alert("Could not load project. File may be corrupted.");
+        }
+    }
+
+
+    // --- Export Logic (Save As / Show Picker) ---
 
     function downloadGIF() {
         const btn = document.getElementById('downloadBtn');
@@ -799,45 +924,34 @@
         btn.innerHTML = 'Processing...';
         btn.disabled = true;
 
-        // 1. Prepare images (scale up for visibility)
         const images = frames.map(frameData => {
             const tCan = document.createElement('canvas');
             tCan.width = CANVAS_SIZE * EXPORT_SCALE;
             tCan.height = CANVAS_SIZE * EXPORT_SCALE;
             const tCtx = tCan.getContext('2d');
-            
-            // Draw small data to temp small canvas first
             const sCan = document.createElement('canvas');
             sCan.width = CANVAS_SIZE;
             sCan.height = CANVAS_SIZE;
             sCan.getContext('2d').putImageData(frameData, 0, 0);
-
-            // Draw scaled up with nearest neighbor
             tCtx.imageSmoothingEnabled = false;
             tCtx.drawImage(sCan, 0, 0, tCan.width, tCan.height);
-            
             return tCan.toDataURL();
         });
 
         const fps = document.getElementById('fpsSlider').value;
 
-        // 2. Generate GIF
         gifshot.createGIF({
             images: images,
             gifWidth: CANVAS_SIZE * EXPORT_SCALE,
             gifHeight: CANVAS_SIZE * EXPORT_SCALE,
             interval: 1 / fps,
             numFrames: images.length,
-            sampleInterval: 10, // Quality trade-off
+            sampleInterval: 10, 
         }, async function(obj) {
             if(!obj.error) {
-                // --- NEW SAVING LOGIC ---
-                // Try modern "Save As" picker first (Works great on Chromebooks)
                 if (window.showSaveFilePicker) {
                     try {
-                        // Convert base64 to Blob
                         const blob = await (await fetch(obj.image)).blob();
-                        
                         const handle = await window.showSaveFilePicker({
                             suggestedName: 'motion-study.gif',
                             types: [{
@@ -849,12 +963,9 @@
                         await writable.write(blob);
                         await writable.close();
                     } catch (err) {
-                        // User cancelled or error, fallback to download
-                        console.log("Save Picker cancelled or failed, falling back.");
                         fallbackDownload(obj.image);
                     }
                 } else {
-                    // Fallback for older browsers
                     fallbackDownload(obj.image);
                 }
             } else {
@@ -937,17 +1048,29 @@
             }
         };
 
-        // NEW: Reset All
+        // Header Buttons
         document.getElementById('resetBtn').onclick = () => {
             if(confirm("Start a new inquiry? This will erase all moments.")) {
                 if(isPlaying) togglePlay();
-                init(); // Re-runs init, clearing frames array
+                init();
                 renderTimeline();
                 loadFrame(0);
             }
         };
 
+        document.getElementById('saveBtn').onclick = saveProject;
+        document.getElementById('loadBtn').onclick = triggerLoad;
         document.getElementById('downloadBtn').onclick = downloadGIF;
+
+        // File Input Change Listener
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => parseProject(evt.target.result);
+            reader.readAsText(file);
+            e.target.value = ''; // Reset so same file can be loaded again
+        };
     }
 
     function setTool(tool) {
